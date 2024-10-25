@@ -1,33 +1,17 @@
 import fs from "node:fs/promises";
-
-type DataContent<T> =
-  | string
-  | boolean
-  | number
-  | undefined
-  | null
-  | T
-  | Array<T>;
-
-interface DataType {
-  [key: string]: DataContent<DataType>;
-}
+import { Collection } from "./Collection";
 
 export class Database {
-  #data: DataType = {};
-  readonly path: string;
+  #data: Record<string, Array<unknown>> = {};
+  readonly #path: string;
 
   constructor(path: string = "./data.json") {
-    this.path = path;
-
-    (async () => {
-      await this.#load();
-    })();
+    this.#path = path;
   }
 
-  async #load() {
+  async load() {
     try {
-      const databaseBuffer = await fs.readFile(this.path, {
+      const databaseBuffer = await fs.readFile(this.#path, {
         encoding: "utf8",
       });
 
@@ -38,25 +22,50 @@ export class Database {
   }
 
   async #save() {
-    await fs.writeFile(this.path, JSON.stringify(this.#data), {
+    await fs.writeFile(this.#path, JSON.stringify(this.#data), {
       encoding: "utf8",
     });
   }
 
-  async insert(title: string, data: keyof DataType) {
-    if (this.#data[title] && this.#data[title] === data) return;
+  collection = {
+    create: async (title: string, $ref?: Array<string>): Promise<boolean> => {
+      if (this.#data[title]) return false;
 
-    this.#data[title] = data;
+      this.#data[title] = [];
+      await this.#save();
 
-    await this.#save();
+      return true;
+    },
+
+    pick: <Schema extends Object = Object>(
+      title: string
+    ): Collection<Schema> | undefined => {
+      if (!this.#data[title]) return undefined;
+
+      return new Collection<Schema>(this.#data[title] as never, this.#save);
+    },
+
+    remove: (title: string): boolean => {
+      if (!this.#data[title]) return false;
+
+      return delete this.#data[title];
+    },
+  };
+
+  schema = {
+    // register(title: string, schema:)
   }
 
   async clear() {
     this.#data = {};
     await this.#save();
   }
-
-  get(title: string): DataContent<DataType> {
-    return this.#data[title] ?? null;
-  }
 }
+
+const db = new Database();
+
+(async () => {
+  await db.load();
+  await db.collection.create("users");
+  const users = db.collection.pick<{ name: string }>("users");
+})();
